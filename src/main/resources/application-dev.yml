@@ -4,3 +4,4 @@ spring:
     username: ${DB_USERNAME:shopping_user}
     password: ${DB_PASSWORD:shopping_password}
     driver-class-name: org.postgresql.Driver
+    
