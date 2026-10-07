@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: shopping-list-api
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/shopping_list}
+    username: ${DB_USERNAME:shopping_user}
+    password: ${DB_PASSWORD:shopping_password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
