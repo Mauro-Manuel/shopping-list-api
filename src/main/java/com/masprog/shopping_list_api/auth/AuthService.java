@@ -1,9 +1,11 @@
 package com.masprog.shopping_list_api.auth;
 
 
+import com.masprog.shopping_list_api.auth.dto.LoginRequest;
 import com.masprog.shopping_list_api.auth.dto.RegisterRequest;
 import com.masprog.shopping_list_api.auth.dto.RegisterResponse;
 import com.masprog.shopping_list_api.auth.exception.EmailAlreadyRegisteredException;
+import com.masprog.shopping_list_api.auth.exception.InvalidCredentialsException;
 import com.masprog.shopping_list_api.user.User;
 import com.masprog.shopping_list_api.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -82,4 +84,28 @@ public class AuthService {
                 savedUser.getEmail()
         );
     }
+
+
+    @Transactional(readOnly = true)
+    public User authenticate(LoginRequest request) {
+
+        String email = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new InvalidCredentialsException()
+                );
+
+        if (!passwordEncoder.matches(
+                request.password(),
+                user.getPasswordHash()
+        )) {
+            throw new InvalidCredentialsException();
+        }
+
+        return user;
+    }
+
 }
