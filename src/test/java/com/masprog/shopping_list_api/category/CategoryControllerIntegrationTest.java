@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -16,6 +17,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.masprog.shopping_list_api.product.Product;
+import com.masprog.shopping_list_api.product.ProductRepository;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +55,12 @@ class CategoryControllerIntegrationTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void shouldCreateCustomCategoryWhenAuthenticatedUserProvidesValidName()
@@ -596,4 +608,83 @@ class CategoryControllerIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
     }
+
+    @Test
+    void shouldReassignProductsToOthersWhenDeletingCustomCategory() throws Exception {
+
+        // Arrange: criar utilizador
+        User user = new User();
+        user.setName("Category Reassignment User");
+        user.setEmail("category.reassignment@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        // Criar categoria personalizada
+        Category customCategory = new Category();
+        customCategory.setName("Churrasco");
+        customCategory.setIcon("flame");
+        customCategory.setType(CategoryType.CUSTOM);
+        customCategory.setUser(savedUser);
+
+        Category savedCategory = categoryRepository.saveAndFlush(customCategory);
+
+        // Localizar a categoria DEFAULT "Outros"
+        Category othersCategory = categoryRepository.findAll()
+                .stream()
+                .filter(c -> c.getType() == CategoryType.DEFAULT
+                        && c.getName().equals("Outros"))
+                .findFirst()
+                .orElseThrow();
+
+        // Criar primeiro produto
+        Product firstProduct = new Product();
+        firstProduct.setName("Picanha");
+        firstProduct.setActive(true);
+        firstProduct.setCategory(savedCategory);
+        firstProduct.setUser(savedUser);
+
+        Product savedFirstProduct = productRepository.saveAndFlush(firstProduct);
+
+        // Criar segundo produto
+        Product secondProduct = new Product();
+        secondProduct.setName("Carvão");
+        secondProduct.setActive(true);
+        secondProduct.setCategory(savedCategory);
+        secondProduct.setUser(savedUser);
+
+        Product savedSecondProduct = productRepository.saveAndFlush(secondProduct);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act: eliminar categoria personalizada
+        mockMvc.perform(delete("/api/v1/categories/{categoryId}", savedCategory.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        // Assert: categoria personalizada foi eliminada
+        assertThat(categoryRepository.findById(savedCategory.getId()))
+                .isEmpty();
+
+        // Assert: produtos continuam na base de dados
+        Product updatedFirstProduct = productRepository.findById(savedFirstProduct.getId())
+                .orElseThrow();
+
+        Product updatedSecondProduct = productRepository.findById(savedSecondProduct.getId())
+                .orElseThrow();
+
+        // Ambos devem pertencer à categoria "Outros"
+        assertThat(updatedFirstProduct.getCategory().getId())
+                .isEqualTo(othersCategory.getId());
+
+        assertThat(updatedSecondProduct.getCategory().getId())
+                .isEqualTo(othersCategory.getId());
+
+        // Produtos continuam activos
+        assertThat(updatedFirstProduct.getActive()).isTrue();
+        assertThat(updatedSecondProduct.getActive()).isTrue();
+    }
+
+
+
 }
