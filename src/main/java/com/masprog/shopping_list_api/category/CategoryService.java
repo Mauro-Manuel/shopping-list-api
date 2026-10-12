@@ -2,6 +2,8 @@ package com.masprog.shopping_list_api.category;
 
 import com.masprog.shopping_list_api.auth.exception.AuthenticatedUserNotFoundException;
 import com.masprog.shopping_list_api.category.exception.CategoryNotFoundException;
+import com.masprog.shopping_list_api.category.exception.DefaultCategoryNotFoundException;
+import com.masprog.shopping_list_api.product.ProductRepository;
 import com.masprog.shopping_list_api.user.User;
 import com.masprog.shopping_list_api.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -15,12 +17,15 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final ProductRepository productRepository;
+
 
     public CategoryService(
             CategoryRepository categoryRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository, ProductRepository productRepository) {
         this.categoryRepository = categoryRepository;
         this.userRepository = userRepository;
+        this.productRepository = productRepository;
     }
 
     @Transactional
@@ -127,13 +132,30 @@ public class CategoryService {
 
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(() ->
-                        new CategoryNotFoundException("Category not found"));
+                        new CategoryNotFoundException("Category not found")
+                );
 
+        // Apenas categorias CUSTOM do próprio utilizador
         if (category.getType() != CategoryType.CUSTOM
                 || !category.getUser().getId().equals(user.getId())) {
             throw new CategoryNotFoundException("Category not found");
         }
 
+        // Localizar a categoria DEFAULT "Outros"
+        Category othersCategory = categoryRepository
+                .findByTypeAndNameIgnoreCase(CategoryType.DEFAULT, "Outros")
+                .orElseThrow(() -> new DefaultCategoryNotFoundException(
+                        "Default category 'Outros' not found"
+                ));
+
+        // Transferir os produtos para "Outros"
+        productRepository.reassignCategory(
+                category.getId(),
+                othersCategory,
+                user.getId()
+        );
+
+        // Eliminar a categoria personalizada
         categoryRepository.delete(category);
     }
 
