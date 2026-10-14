@@ -7,6 +7,8 @@ import com.masprog.shopping_list_api.auth.exception.InvalidCredentialsException;
 import com.masprog.shopping_list_api.category.exception.CategoryNotFoundException;
 import com.masprog.shopping_list_api.category.exception.DefaultCategoryNotFoundException;
 import com.masprog.shopping_list_api.product.exception.ProductValidationException;
+import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
+import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -259,6 +261,47 @@ public class GlobalExceptionHandler {
                 status.getReasonPhrase(),
                 "DEFAULT_CATEGORY_NOT_FOUND",
                 "Required default category is unavailable",
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(ShoppingListValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleShoppingListValidation(
+            ShoppingListValidationException exception,
+            HttpServletRequest request
+    ) {
+
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "SHOPPING_LIST_VALIDATION_ERROR",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(ShoppingListNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleShoppingListNotFound(
+            ShoppingListNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.NOT_FOUND;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "SHOPPING_LIST_NOT_FOUND",
+                exception.getMessage(),
                 request.getRequestURI(),
                 null
         );

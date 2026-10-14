@@ -7,6 +7,8 @@ import com.masprog.shopping_list_api.auth.exception.InvalidCredentialsException;
 import com.masprog.shopping_list_api.category.exception.DefaultCategoryNotFoundException;
 import com.masprog.shopping_list_api.product.exception.ProductAlreadyExistsException;
 import com.masprog.shopping_list_api.product.exception.ProductValidationException;
+import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
+import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -257,6 +259,73 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getBody().message())
                 .isEqualTo("Required default category is unavailable");
+    }
+
+    @Test
+    void shouldHandleShoppingListValidationException() {
+
+        ShoppingListValidationException exception =
+                new ShoppingListValidationException(
+                        "Shopping list name is required"
+                );
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/shopping-lists");
+
+        ResponseEntity<ApiErrorResponse> response =
+                exceptionHandler.handleShoppingListValidation(
+                        exception,
+                        request
+                );
+
+        assertThat(response.getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(response.getBody()).isNotNull();
+
+        assertThat(response.getBody().code())
+                .isEqualTo("SHOPPING_LIST_VALIDATION_ERROR");
+
+        assertThat(response.getBody().message())
+                .isEqualTo("Shopping list name is required");
+
+        assertThat(response.getBody().path())
+                .isEqualTo("/api/v1/shopping-lists");
+    }
+
+    @Test
+    void shouldHandleShoppingListNotFoundException() {
+
+        // Arrange
+        ShoppingListNotFoundException exception =
+                new ShoppingListNotFoundException(
+                        "Shopping list not found"
+                );
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/shopping-lists/999");
+
+        // Act
+        ResponseEntity<ApiErrorResponse> response =
+                exceptionHandler.handleShoppingListNotFound(
+                        exception,
+                        request
+                );
+
+        // Assert
+        assertThat(response.getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        assertThat(response.getBody()).isNotNull();
+
+        assertThat(response.getBody().code())
+                .isEqualTo("SHOPPING_LIST_NOT_FOUND");
+
+        assertThat(response.getBody().message())
+                .isEqualTo("Shopping list not found");
+
+        assertThat(response.getBody().path())
+                .isEqualTo("/api/v1/shopping-lists/999");
     }
 
 
