@@ -2,6 +2,8 @@
 package com.masprog.shopping_list_api.auth;
 
 import com.masprog.shopping_list_api.auth.jwt.JwtService;
+import com.masprog.shopping_list_api.auth.ratelimit.AuthRateLimitFilter;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,6 +57,14 @@ class AuthControllerIntegrationTest {
 
     @Autowired
     private RefreshTokenGenerator refreshTokenGenerator;
+
+    @Autowired
+    private AuthRateLimitFilter authRateLimitFilter;
+
+    @BeforeEach
+    void resetRateLimitCounters() {
+        authRateLimitFilter.clearRequests();
+    }
 
     @Container
     @ServiceConnection
@@ -603,6 +613,122 @@ class AuthControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isUnauthorized());
+    }
+
+
+    // RATE LIMIT
+
+    @Test
+    void shouldReturnTooManyRequestsAfterFiveLoginAttempts()
+            throws Exception {
+
+        // Arrange
+        String requestBody = """
+            {
+                "email": "invalid.login@test.com",
+                "password": "WrongPassword123"
+            }
+            """;
+
+        String clientIp = "192.0.2.55";
+
+        // Act & Assert: as primeiras cinco tentativas são processadas
+        for (int i = 0; i < 5; i++) {
+
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .with(request -> {
+                                request.setRemoteAddr(clientIp);
+                                return request;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        // Sexta tentativa: bloqueada pelo rate limiting
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(request -> {
+                            request.setRemoteAddr(clientIp);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void shouldReturnTooManyRequestsAfterFiveRegistrationAttempts()
+            throws Exception {
+
+        // Arrange
+        String requestBody = """
+            {
+                "name": "Test User",
+                "email": "invalid-email",
+                "password": "Password123",
+                "confirmPassword": "Password123"
+            }
+            """;
+
+        String clientIp = "192.0.2.56";
+
+        // Primeiros cinco pedidos
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/register")
+                            .with(request -> {
+                                request.setRemoteAddr(clientIp);
+                                return request;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isBadRequest());
+        }
+
+        // Sexto pedido deve ser bloqueado
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(request -> {
+                            request.setRemoteAddr(clientIp);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void shouldReturnTooManyRequestsAfterTenRefreshAttempts()
+            throws Exception {
+
+        // Arrange
+        String requestBody = """
+            {
+                "refreshToken": "invalid-refresh-token-for-rate-limit"
+            }
+            """;
+
+        String clientIp = "192.0.2.57";
+
+        // Act & Assert: os primeiros 10 pedidos são processados
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/api/v1/auth/refresh")
+                            .with(request -> {
+                                request.setRemoteAddr(clientIp);
+                                return request;
+                            })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        // O 11.º pedido deve ser bloqueado
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(request -> {
+                            request.setRemoteAddr(clientIp);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isTooManyRequests());
     }
 
 

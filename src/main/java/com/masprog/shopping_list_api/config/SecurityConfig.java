@@ -3,6 +3,7 @@ package com.masprog.shopping_list_api.config;
 
 import com.masprog.shopping_list_api.auth.jwt.JwtAuthenticationFilter;
 import com.masprog.shopping_list_api.auth.jwt.JwtService;
+import com.masprog.shopping_list_api.auth.ratelimit.AuthRateLimitFilter;
 import com.masprog.shopping_list_api.user.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,6 +14,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import com.masprog.shopping_list_api.auth.ratelimit.AuthRateLimitFilter;
+
 @Configuration
 public class SecurityConfig {
 
@@ -20,7 +24,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtService jwtService,
-            UserRepository userRepository
+            UserRepository userRepository,
+            AuthRateLimitFilter authRateLimitFilter
     ) throws Exception {
 
         JwtAuthenticationFilter jwtAuthenticationFilter =
@@ -47,11 +52,30 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh"
                         ).permitAll()
                         .anyRequest().authenticated()
-                )
+                ).addFilterBefore(
+                        authRateLimitFilter,
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
                 )
                 .build();
+    }
+
+    @Bean
+    public AuthRateLimitFilter authRateLimitFilter() {
+        return new AuthRateLimitFilter();
+    }
+
+    @Bean
+    public FilterRegistrationBean<AuthRateLimitFilter> authRateLimitFilterRegistration(
+            AuthRateLimitFilter authRateLimitFilter
+    ) {
+        FilterRegistrationBean<AuthRateLimitFilter> registration =
+                new FilterRegistrationBean<>(authRateLimitFilter);
+
+        registration.setEnabled(false);
+
+        return registration;
     }
 }
