@@ -7,6 +7,9 @@ import com.masprog.shopping_list_api.auth.exception.InvalidCredentialsException;
 import com.masprog.shopping_list_api.category.exception.DefaultCategoryNotFoundException;
 import com.masprog.shopping_list_api.product.exception.ProductAlreadyExistsException;
 import com.masprog.shopping_list_api.product.exception.ProductValidationException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ProductAlreadyInListException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ShoppingItemNotFoundException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ShoppingItemValidationException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -326,6 +329,108 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getBody().path())
                 .isEqualTo("/api/v1/shopping-lists/999");
+    }
+
+    @Test
+    void shouldHandleProductAlreadyInListException() {
+
+        // Arrange
+        ProductAlreadyInListException exception =
+                new ProductAlreadyInListException(
+                        "Product already exists in shopping list"
+                );
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/shopping-lists/10/items");
+
+        // Act
+        ResponseEntity<ApiErrorResponse> response =
+                exceptionHandler.handleProductAlreadyInList(
+                        exception,
+                        request
+                );
+
+        // Assert
+        assertThat(response.getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        assertThat(response.getBody()).isNotNull();
+
+        assertThat(response.getBody().code())
+                .isEqualTo("PRODUCT_ALREADY_IN_LIST");
+
+        assertThat(response.getBody().message())
+                .isEqualTo("Product already exists in shopping list");
+
+        assertThat(response.getBody().path())
+                .isEqualTo("/api/v1/shopping-lists/10/items");
+    }
+
+    @Test
+    void shouldHandleShoppingItemValidationException() {
+
+        // Arrange
+        ShoppingItemValidationException exception =
+                new ShoppingItemValidationException(
+                        "Shopping item quantity must be greater than zero"
+                );
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/shopping-lists/10/items");
+
+        // Act
+        ResponseEntity<ApiErrorResponse> response =
+                exceptionHandler.handleShoppingItemValidation(
+                        exception,
+                        request
+                );
+
+        // Assert
+        assertThat(response.getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        assertThat(response.getBody()).isNotNull();
+
+        assertThat(response.getBody().code())
+                .isEqualTo("SHOPPING_ITEM_VALIDATION_ERROR");
+
+        assertThat(response.getBody().message())
+                .isEqualTo("Shopping item quantity must be greater than zero");
+
+        assertThat(response.getBody().path())
+                .isEqualTo("/api/v1/shopping-lists/10/items");
+    }
+
+    @Test
+    void shouldHandleShoppingItemNotFoundException() {
+
+        // Arrange
+        ShoppingItemNotFoundException exception =
+                new ShoppingItemNotFoundException(
+                        "Shopping item not found"
+                );
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/shopping-lists/10/items/99");
+
+        // Act
+        ResponseEntity<ApiErrorResponse> response =
+                exceptionHandler.handleShoppingItemNotFound(
+                        exception,
+                        request
+                );
+
+        // Assert
+        assertThat(response.getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code())
+                .isEqualTo("SHOPPING_ITEM_NOT_FOUND");
+        assertThat(response.getBody().message())
+                .isEqualTo("Shopping item not found");
+        assertThat(response.getBody().path())
+                .isEqualTo("/api/v1/shopping-lists/10/items/99");
     }
 
 

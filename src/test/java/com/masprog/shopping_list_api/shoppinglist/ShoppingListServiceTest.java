@@ -1,6 +1,9 @@
 package com.masprog.shopping_list_api.shoppinglist;
 
 import com.masprog.shopping_list_api.auth.exception.AuthenticatedUserNotFoundException;
+import com.masprog.shopping_list_api.shoppingitem.ShoppingItemRepository;
+import com.masprog.shopping_list_api.shoppinglist.dto.ShoppingListResponse;
+import com.masprog.shopping_list_api.shoppinglist.exception.EmptyShoppingListCompletionException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import com.masprog.shopping_list_api.user.User;
@@ -17,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +44,9 @@ class ShoppingListServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ShoppingItemRepository shoppingItemRepository;
 
     @InjectMocks
     private ShoppingListService shoppingListService;
@@ -447,19 +454,148 @@ class ShoppingListServiceTest {
 
     // PATCH
 
+
+    @Test
+    void shouldCompleteShoppingListWhenItContainsItems() {
+
+        // Arrange
+        Long listId = 10L;
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setId(listId);
+        shoppingList.setName("Compras de Outubro");
+        shoppingList.setUser(user);
+        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
+
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(shoppingListRepository.findByIdAndUserId(
+                listId, user.getId()
+        )).thenReturn(Optional.of(shoppingList));
+
+        // A lista contém pelo menos um item
+        when(shoppingItemRepository.existsByShoppingListId(listId))
+                .thenReturn(true);
+
+        // Act
+        shoppingListService.complete(listId, email);
+
+        // Assert
+        assertThat(shoppingList.getStatus())
+                .isEqualTo(ShoppingListStatus.COMPLETED);
+
+        assertThat(shoppingList.getCompletedAt())
+                .isNotNull();
+    }
+
     @Test
     void shouldRejectCompletingEmptyShoppingList() {
 
         // Arrange
         Long listId = 10L;
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
 
         ShoppingList shoppingList = new ShoppingList();
         shoppingList.setId(listId);
         shoppingList.setName("Compras de Outubro");
-        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
         shoppingList.setUser(user);
+        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
 
-        when(userRepository.findByEmail(user.getEmail()))
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(shoppingListRepository.findByIdAndUserId(
+                listId, user.getId()
+        )).thenReturn(Optional.of(shoppingList));
+
+        // A lista não contém itens
+        when(shoppingItemRepository.existsByShoppingListId(listId))
+                .thenReturn(false);
+
+        // Act & Assert
+        assertThatThrownBy(() ->
+                shoppingListService.complete(listId, email)
+        )
+                .isInstanceOf(EmptyShoppingListCompletionException.class)
+                .hasMessage("Cannot complete an empty shopping list");
+
+        // A lista deve continuar activa
+        assertThat(shoppingList.getStatus())
+                .isEqualTo(ShoppingListStatus.ACTIVE);
+
+        // A data de conclusão deve permanecer nula
+        assertThat(shoppingList.getCompletedAt())
+                .isNull();
+
+        verify(shoppingItemRepository)
+                .existsByShoppingListId(listId);
+    }
+
+    @Test
+    void shouldReopenCompletedShoppingList() {
+
+        // Arrange
+        Long listId = 10L;
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setId(listId);
+        shoppingList.setName("Compras de Outubro");
+        shoppingList.setUser(user);
+        shoppingList.setStatus(ShoppingListStatus.COMPLETED);
+        shoppingList.setCompletedAt(LocalDateTime.now().minusDays(1));
+
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(shoppingListRepository.findByIdAndUserId(
+                listId,
+                user.getId()
+        )).thenReturn(Optional.of(shoppingList));
+
+        // Act
+        shoppingListService.reopen(listId, email);
+
+        // Assert
+        assertThat(shoppingList.getStatus())
+                .isEqualTo(ShoppingListStatus.ACTIVE);
+
+        assertThat(shoppingList.getCompletedAt())
+                .isNull();
+    }
+
+    @Test
+    void shouldRejectReopeningActiveShoppingList() {
+
+        // Arrange
+        Long listId = 10L;
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setId(listId);
+        shoppingList.setName("Compras de Outubro");
+        shoppingList.setUser(user);
+        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
+
+        when(userRepository.findByEmail(email))
                 .thenReturn(Optional.of(user));
 
         when(shoppingListRepository.findByIdAndUserId(
@@ -469,14 +605,16 @@ class ShoppingListServiceTest {
 
         // Act & Assert
         assertThatThrownBy(() ->
-                shoppingListService.complete(listId, user.getEmail())
+                shoppingListService.reopen(listId, email)
         )
                 .isInstanceOf(ShoppingListValidationException.class)
-                .hasMessage("Cannot complete an empty shopping list");
+                .hasMessage("Only completed shopping lists can be reopened");
 
+        // A lista deve permanecer ACTIVE
         assertThat(shoppingList.getStatus())
                 .isEqualTo(ShoppingListStatus.ACTIVE);
 
+        // A data de conclusão permanece nula
         assertThat(shoppingList.getCompletedAt())
                 .isNull();
     }

@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Optional;
+
 
 @Service
 public class ProductService {
@@ -162,6 +164,44 @@ public class ProductService {
         product.setActive(false);
     }
 
+    @Transactional
+    public Product findOrCreate(
+            String name,
+            Long categoryId,
+            String authenticatedEmail
+    ) {
+
+        if (name == null || name.isBlank()) {
+            throw new ProductValidationException("Product name is required");
+        }
+
+        User user = getAuthenticatedUser(authenticatedEmail);
+
+        // Validar a categoria antes de procurar o produto
+        getAccessibleCategory(categoryId, user);
+
+        String normalizedName = ProductNameNormalizer.normalize(name);
+
+        Optional<Product> existingProduct =
+                productRepository.findByUserIdAndNameIgnoreCase(
+                        user.getId(),
+                        normalizedName
+                );
+
+        if (existingProduct.isPresent()) {
+
+            Product product = existingProduct.get();
+
+            // Reactivar o produto caso esteja inactivo
+            if (!product.getActive()) {
+                product.setActive(true);
+            }
+
+            return product;
+        }
+
+        return create(normalizedName, categoryId, authenticatedEmail);
+    }
 
     private User getAuthenticatedUser(String authenticatedEmail) {
         return userRepository.findByEmail(authenticatedEmail)

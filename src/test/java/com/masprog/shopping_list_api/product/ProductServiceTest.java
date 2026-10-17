@@ -204,5 +204,144 @@ class ProductServiceTest {
         verifyNoInteractions(categoryRepository, productRepository);
     }
 
+    @Test
+    void shouldReuseExistingProductWhenNameAlreadyExists() {
+
+        // Arrange
+        String name = "Arroz";
+        Long categoryId = 5L;
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        Product existingProduct = new Product();
+        existingProduct.setId(10L);
+        existingProduct.setName(name);
+        existingProduct.setUser(user);
+
+        Category category = new Category();
+        category.setId(5L);
+        category.setType(CategoryType.DEFAULT);
+
+        when(categoryRepository.findById(5L))
+                .thenReturn(Optional.of(category));
+
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(productRepository.findByUserIdAndNameIgnoreCase(
+                user.getId(), name
+        )).thenReturn(Optional.of(existingProduct));
+
+        // Act
+        Product result = productService.findOrCreate(
+                name,
+                categoryId,
+                email
+        );
+
+        // Assert
+        assertThat(result.getId()).isEqualTo(10L);
+        assertThat(result).isSameAs(existingProduct);
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+    @Test
+    void shouldReactivateExistingInactiveProductWhenAddingToShoppingList() {
+
+        // Arrange
+        String email = "test@example.com";
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        Product existingProduct = new Product();
+        existingProduct.setId(10L);
+        existingProduct.setName("Arroz");
+        existingProduct.setActive(false);
+        existingProduct.setUser(user);
+
+        Category category = new Category();
+        category.setId(5L);
+        category.setType(CategoryType.DEFAULT);
+
+        when(categoryRepository.findById(5L))
+                .thenReturn(Optional.of(category));
+
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(productRepository.findByUserIdAndNameIgnoreCase(
+                user.getId(), "Arroz"
+        )).thenReturn(Optional.of(existingProduct));
+
+        // Act
+        Product result = productService.findOrCreate(
+                "Arroz",
+                5L,
+                email
+        );
+
+        // Assert
+        assertThat(result).isSameAs(existingProduct);
+        assertThat(result.getActive()).isTrue();
+
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
+    void shouldRejectInaccessibleCategoryBeforeSearchingProduct() {
+
+        // Arrange
+        String email = "test@example.com";
+
+        // Utilizador autenticado
+        User user = new User();
+        user.setId(1L);
+        user.setEmail(email);
+
+        // Proprietário da categoria personalizada
+        User categoryOwner = new User();
+        categoryOwner.setId(2L);
+
+        // Categoria pertencente a outro utilizador
+        Category category = new Category();
+        category.setId(5L);
+        category.setType(CategoryType.CUSTOM);
+        category.setUser(categoryOwner);
+
+        // Configuração dos mocks
+        when(userRepository.findByEmail(email))
+                .thenReturn(Optional.of(user));
+
+        when(categoryRepository.findById(5L))
+                .thenReturn(Optional.of(category));
+
+
+        // Act & Assert
+        assertThatThrownBy(() ->
+                productService.findOrCreate(
+                        "Arroz",
+                        5L,
+                        email
+                )
+        )
+                .isInstanceOf(CategoryNotFoundException.class)
+                .hasMessage("Category not found");
+
+        // Nenhum produto novo deve ser criado
+        verify(productRepository, never()).save(any(Product.class));
+
+// O catálogo nem sequer deve ser consultado
+        verify(productRepository, never())
+                .findByUserIdAndNameIgnoreCase(anyLong(), anyString());
+
+        // Nenhum produto novo deve ser criado
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
 
 }

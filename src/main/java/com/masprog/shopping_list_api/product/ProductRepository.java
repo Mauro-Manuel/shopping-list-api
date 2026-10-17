@@ -46,4 +46,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             @Param("userId") Long userId
     );
 
+    Optional<Product> findByUserIdAndNameIgnoreCase(Long userId, String name);
+
 }

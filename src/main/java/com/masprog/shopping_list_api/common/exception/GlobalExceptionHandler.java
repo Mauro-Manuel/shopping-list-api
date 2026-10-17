@@ -7,6 +7,10 @@ import com.masprog.shopping_list_api.auth.exception.InvalidCredentialsException;
 import com.masprog.shopping_list_api.category.exception.CategoryNotFoundException;
 import com.masprog.shopping_list_api.category.exception.DefaultCategoryNotFoundException;
 import com.masprog.shopping_list_api.product.exception.ProductValidationException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ProductAlreadyInListException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ShoppingItemNotFoundException;
+import com.masprog.shopping_list_api.shoppingitem.exception.ShoppingItemValidationException;
+import com.masprog.shopping_list_api.shoppinglist.exception.EmptyShoppingListCompletionException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -302,6 +306,88 @@ public class GlobalExceptionHandler {
                 status.getReasonPhrase(),
                 "SHOPPING_LIST_NOT_FOUND",
                 exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(ProductAlreadyInListException.class)
+    public ResponseEntity<ApiErrorResponse> handleProductAlreadyInList(
+            ProductAlreadyInListException exception,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.CONFLICT;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "PRODUCT_ALREADY_IN_LIST",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(ShoppingItemValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleShoppingItemValidation(
+            ShoppingItemValidationException exception,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.UNPROCESSABLE_ENTITY;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "SHOPPING_ITEM_VALIDATION_ERROR",
+                exception.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(ShoppingItemNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleShoppingItemNotFound(
+            ShoppingItemNotFoundException ex,
+            HttpServletRequest request
+    ) {
+
+        HttpStatus status = HttpStatus.NOT_FOUND;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "SHOPPING_ITEM_NOT_FOUND",
+                ex.getMessage(),
+                request.getRequestURI(),
+                null
+        );
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(EmptyShoppingListCompletionException.class)
+    public ResponseEntity<ApiErrorResponse> handleEmptyShoppingListCompletion(
+            EmptyShoppingListCompletionException ex,
+            HttpServletRequest request
+    ) {
+
+        HttpStatus status = HttpStatus.UNPROCESSABLE_ENTITY;
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                LocalDateTime.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                "EMPTY_LIST_CANNOT_BE_COMPLETED",
+                ex.getMessage(),
                 request.getRequestURI(),
                 null
         );

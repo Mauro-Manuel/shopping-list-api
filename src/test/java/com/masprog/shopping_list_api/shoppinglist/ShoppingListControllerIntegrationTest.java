@@ -1,6 +1,9 @@
 package com.masprog.shopping_list_api.shoppinglist;
 
 import com.masprog.shopping_list_api.auth.jwt.JwtService;
+import com.masprog.shopping_list_api.category.CategoryRepository;
+import com.masprog.shopping_list_api.product.ProductRepository;
+import com.masprog.shopping_list_api.shoppingitem.ShoppingItemRepository;
 import com.masprog.shopping_list_api.user.User;
 import com.masprog.shopping_list_api.user.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -24,8 +27,26 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
-import java.time.LocalDateTime;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+
+
+import com.masprog.shopping_list_api.category.Category;
+import com.masprog.shopping_list_api.category.CategoryType;
+import com.masprog.shopping_list_api.product.Product;
+import com.masprog.shopping_list_api.shoppingitem.ShoppingItem;
+import com.masprog.shopping_list_api.shoppingitem.Unit;
+
+// Java
+import java.math.BigDecimal;
 import java.util.UUID;
+
+import java.time.LocalDateTime;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -46,8 +67,18 @@ class ShoppingListControllerIntegrationTest {
     @Autowired
     private ShoppingListRepository shoppingListRepository;
 
+    @MockitoSpyBean
+    private ShoppingItemRepository shoppingItemRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
     @Autowired
     private JwtService jwtService;
+
 
     // CREATE
 
@@ -726,6 +757,512 @@ class ShoppingListControllerIntegrationTest {
         // Confirmar a eliminação na base de dados
         assertThat(shoppingListRepository.existsById(savedList.getId()))
                 .isFalse();
+    }
+
+    @Test
+    void shouldCompleteShoppingListWithUncheckedItems() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Pending Items User");
+        user.setEmail("shopping.list.pending."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        Category category = categoryRepository.findAll()
+                .stream()
+                .filter(c -> c.getType() == CategoryType.DEFAULT
+                        && c.getName().equals("Alimentação"))
+                .findFirst()
+                .orElseThrow();
+
+        Product product = new Product();
+        product.setName("Arroz");
+        product.setCategory(category);
+        product.setUser(savedUser);
+
+        Product savedProduct = productRepository.saveAndFlush(product);
+
+        ShoppingList list = new ShoppingList();
+        list.setName("Compras de Outubro");
+        list.setUser(savedUser);
+
+        ShoppingList savedList = shoppingListRepository.saveAndFlush(list);
+
+        // Item ainda não comprado
+        ShoppingItem item = new ShoppingItem();
+        item.setShoppingList(savedList);
+        item.setProduct(savedProduct);
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnit(Unit.KG);
+        item.setChecked(false);
+
+        ShoppingItem savedItem = shoppingItemRepository.saveAndFlush(item);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(patch(
+                        "/api/v1/shopping-lists/{listId}/complete",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        // Confirmar o estado persistido
+        ShoppingList completedList = shoppingListRepository
+                .findById(savedList.getId())
+                .orElseThrow();
+
+        assertThat(completedList.getStatus())
+                .isEqualTo(ShoppingListStatus.COMPLETED);
+
+        assertThat(completedList.getCompletedAt())
+                .isNotNull();
+
+        ShoppingItem unchangedItem = shoppingItemRepository
+                .findById(savedItem.getId())
+                .orElseThrow();
+
+        assertThat(unchangedItem.isChecked()).isFalse();
+    }
+
+    @Test
+    void shouldRejectCompletingEmptyShoppingList() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Empty Shopping List User");
+        user.setEmail("shopping.list.empty."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Lista Vazia");
+        shoppingList.setUser(savedUser);
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(patch(
+                        "/api/v1/shopping-lists/{listId}/complete",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code")
+                        .value("EMPTY_LIST_CANNOT_BE_COMPLETED"))
+                .andExpect(jsonPath("$.message")
+                        .value("Cannot complete an empty shopping list"));
+
+        // A lista permanece ACTIVE
+        ShoppingList unchangedList = shoppingListRepository
+                .findById(savedList.getId())
+                .orElseThrow();
+
+        assertThat(unchangedList.getStatus())
+                .isEqualTo(ShoppingListStatus.ACTIVE);
+
+        assertThat(unchangedList.getCompletedAt())
+                .isNull();
+    }
+
+    @Test
+    void shouldReopenCompletedShoppingList() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Reopen User");
+        user.setEmail("shopping.list.reopen."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Compras Concluídas");
+        shoppingList.setUser(savedUser);
+        shoppingList.setStatus(ShoppingListStatus.COMPLETED);
+        shoppingList.setCompletedAt(LocalDateTime.now().minusDays(1));
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(patch(
+                        "/api/v1/shopping-lists/{listId}/reopen",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        // Confirmar que a lista foi reaberta
+        ShoppingList reopenedList = shoppingListRepository
+                .findById(savedList.getId())
+                .orElseThrow();
+
+        assertThat(reopenedList.getStatus())
+                .isEqualTo(ShoppingListStatus.ACTIVE);
+
+        assertThat(reopenedList.getCompletedAt())
+                .isNull();
+    }
+
+    @Test
+    void shouldRejectReopeningActiveShoppingList() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Already Active User");
+        user.setEmail("shopping.list.active."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Compras de Outubro");
+        shoppingList.setUser(savedUser);
+        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(patch(
+                        "/api/v1/shopping-lists/{listId}/reopen",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code")
+                        .value("SHOPPING_LIST_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message")
+                        .value("Only completed shopping lists can be reopened"));
+
+        // A lista permanece ACTIVE
+        ShoppingList unchangedList = shoppingListRepository
+                .findById(savedList.getId())
+                .orElseThrow();
+
+        assertThat(unchangedList.getStatus())
+                .isEqualTo(ShoppingListStatus.ACTIVE);
+
+        assertThat(unchangedList.getCompletedAt())
+                .isNull();
+    }
+
+    @Test
+    void shouldRejectReopeningAnotherUsersShoppingList() throws Exception {
+
+        // Arrange: proprietário da lista
+        User owner = new User();
+        owner.setName("Shopping List Owner");
+        owner.setEmail("shopping.list.owner."
+                + UUID.randomUUID() + "@test.com");
+        owner.setPasswordHash("hashed-password");
+
+        User savedOwner = userRepository.saveAndFlush(owner);
+
+        // Outro utilizador
+        User otherUser = new User();
+        otherUser.setName("Other Shopping List User");
+        otherUser.setEmail("shopping.list.other."
+                + UUID.randomUUID() + "@test.com");
+        otherUser.setPasswordHash("hashed-password");
+
+        User savedOtherUser = userRepository.saveAndFlush(otherUser);
+
+        // Lista concluída pertencente ao primeiro utilizador
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Compras Privadas");
+        shoppingList.setUser(savedOwner);
+        shoppingList.setStatus(ShoppingListStatus.COMPLETED);
+        shoppingList.setCompletedAt(LocalDateTime.now().minusDays(1));
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        // Autenticação do segundo utilizador
+        String token = jwtService.generateAccessToken(
+                savedOtherUser.getId()
+        );
+
+        // Act & Assert
+        mockMvc.perform(patch(
+                        "/api/v1/shopping-lists/{listId}/reopen",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code")
+                        .value("SHOPPING_LIST_NOT_FOUND"))
+                .andExpect(jsonPath("$.message")
+                        .value("Shopping list not found"));
+
+        // A lista original deve permanecer concluída
+        ShoppingList unchangedList = shoppingListRepository
+                .findById(savedList.getId())
+                .orElseThrow();
+
+        assertThat(unchangedList.getStatus())
+                .isEqualTo(ShoppingListStatus.COMPLETED);
+
+        assertThat(unchangedList.getCompletedAt())
+                .isNotNull();
+    }
+
+    @Test
+    void shouldReturnShoppingListProgress() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Progress User");
+        user.setEmail("shopping.list.progress."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        Category category = categoryRepository.findAll()
+                .stream()
+                .filter(c -> c.getType() == CategoryType.DEFAULT
+                        && c.getName().equals("Alimentação"))
+                .findFirst()
+                .orElseThrow();
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Compras de Outubro");
+        shoppingList.setUser(savedUser);
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        String[] productNames = {
+                "Arroz", "Leite", "Açúcar", "Massa", "Óleo"
+        };
+
+        for (int i = 0; i < productNames.length; i++) {
+
+            Product product = new Product();
+            product.setName(productNames[i]);
+            product.setCategory(category);
+            product.setUser(savedUser);
+
+            Product savedProduct = productRepository.saveAndFlush(product);
+
+            ShoppingItem item = new ShoppingItem();
+            item.setShoppingList(savedList);
+            item.setProduct(savedProduct);
+            item.setQuantity(BigDecimal.ONE);
+            item.setUnit(Unit.UNIT);
+
+            // Três produtos comprados e dois pendentes
+            item.setChecked(i < 3);
+
+            if (item.isChecked()) {
+                item.setCheckedAt(LocalDateTime.now());
+            }
+
+            shoppingItemRepository.saveAndFlush(item);
+        }
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(get(
+                        "/api/v1/shopping-lists/{listId}",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(savedList.getId()))
+                .andExpect(jsonPath("$.totalItems").value(5))
+                .andExpect(jsonPath("$.checkedItems").value(3))
+                .andExpect(jsonPath("$.pendingItems").value(2))
+                .andExpect(jsonPath("$.progress").value(60))
+                .andExpect(jsonPath("$.items.length()").value(5))
+                .andExpect(jsonPath("$.items[0].product.id").isNumber())
+                .andExpect(jsonPath("$.items[0].product.name").isString())
+                .andExpect(jsonPath("$.items[0].category.id").isNumber())
+                .andExpect(jsonPath("$.items[0].category.name").isString())
+                .andExpect(jsonPath("$.items[0].quantity").isNumber())
+                .andExpect(jsonPath("$.items[0].unit").value("UNIT"))
+                .andExpect(jsonPath("$.items[0].checked").isBoolean());
+    }
+
+    @Test
+    void shouldReturnZeroProgressForEmptyShoppingList() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Empty Shopping List User");
+        user.setEmail("empty.shopping.list."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Lista vazia");
+        shoppingList.setUser(savedUser);
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(get(
+                        "/api/v1/shopping-lists/{listId}",
+                        savedList.getId()
+                )
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(0))
+                .andExpect(jsonPath("$.checkedItems").value(0))
+                .andExpect(jsonPath("$.pendingItems").value(0))
+                .andExpect(jsonPath("$.progress").value(0));
+    }
+
+
+    @Test
+    void shouldUseAggregatedQueryWhenListingShoppingLists() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Aggregation User");
+        user.setEmail("shopping.list.aggregation."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        ShoppingList firstList = new ShoppingList();
+        firstList.setName("Lista A");
+        firstList.setUser(savedUser);
+
+        ShoppingList savedFirstList =
+                shoppingListRepository.saveAndFlush(firstList);
+
+        ShoppingList secondList = new ShoppingList();
+        secondList.setName("Lista B");
+        secondList.setUser(savedUser);
+
+        ShoppingList savedSecondList =
+                shoppingListRepository.saveAndFlush(secondList);
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act
+        mockMvc.perform(get("/api/v1/shopping-lists")
+                        .header("Authorization", "Bearer " + token)
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2));
+
+        // Assert
+        verify(shoppingItemRepository, times(1))
+                .countItemsByShoppingListIds(argThat(ids ->
+                        ids.size() == 2
+                                && ids.contains(savedFirstList.getId())
+                                && ids.contains(savedSecondList.getId())
+                ));
+
+        verify(shoppingItemRepository, never())
+                .countByShoppingListId(anyLong());
+
+        verify(shoppingItemRepository, never())
+                .countByShoppingListIdAndCheckedTrue(anyLong());
+    }
+
+    @Test
+    void shouldReturnCorrectProgressWhenListingShoppingLists() throws Exception {
+
+        // Arrange
+        User user = new User();
+        user.setName("Shopping List Paginated Progress User");
+        user.setEmail("shopping.list.paginated.progress."
+                + UUID.randomUUID() + "@test.com");
+        user.setPasswordHash("hashed-password");
+
+        User savedUser = userRepository.saveAndFlush(user);
+
+        Category category = categoryRepository.findAll()
+                .stream()
+                .filter(c -> c.getType() == CategoryType.DEFAULT
+                        && c.getName().equals("Alimentação"))
+                .findFirst()
+                .orElseThrow();
+
+        ShoppingList shoppingList = new ShoppingList();
+        shoppingList.setName("Lista com produtos");
+        shoppingList.setUser(savedUser);
+
+        ShoppingList savedList =
+                shoppingListRepository.saveAndFlush(shoppingList);
+
+        ShoppingList emptyList = new ShoppingList();
+        emptyList.setName("Lista vazia");
+        emptyList.setUser(savedUser);
+
+        shoppingListRepository.saveAndFlush(emptyList);
+
+        String[] productNames = {"Arroz", "Leite", "Açúcar"};
+
+        for (int i = 0; i < productNames.length; i++) {
+
+            Product product = new Product();
+            product.setName(productNames[i]);
+            product.setCategory(category);
+            product.setUser(savedUser);
+
+            Product savedProduct = productRepository.saveAndFlush(product);
+
+            ShoppingItem item = new ShoppingItem();
+            item.setShoppingList(savedList);
+            item.setProduct(savedProduct);
+            item.setQuantity(BigDecimal.ONE);
+            item.setUnit(Unit.UNIT);
+            item.setChecked(i < 2);
+
+            if (item.isChecked()) {
+                item.setCheckedAt(LocalDateTime.now());
+            }
+
+            shoppingItemRepository.saveAndFlush(item);
+        }
+
+        String token = jwtService.generateAccessToken(savedUser.getId());
+
+        // Act & Assert
+        mockMvc.perform(get("/api/v1/shopping-lists")
+                        .header("Authorization", "Bearer " + token)
+                        .param("page", "0")
+                        .param("size", "10")
+                        .param("sort", "id,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].totalItems").value(3))
+                .andExpect(jsonPath("$.content[0].checkedItems").value(2))
+                .andExpect(jsonPath("$.content[0].pendingItems").value(1))
+                .andExpect(jsonPath("$.content[0].progress").value(66))
+                .andExpect(jsonPath("$.content[1].totalItems").value(0))
+                .andExpect(jsonPath("$.content[1].checkedItems").value(0))
+                .andExpect(jsonPath("$.content[1].pendingItems").value(0))
+                .andExpect(jsonPath("$.content[1].progress").value(0));
     }
 
 

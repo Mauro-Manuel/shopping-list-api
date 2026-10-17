@@ -1,6 +1,8 @@
 package com.masprog.shopping_list_api.shoppinglist;
 
 import com.masprog.shopping_list_api.auth.exception.AuthenticatedUserNotFoundException;
+import com.masprog.shopping_list_api.shoppingitem.ShoppingItemRepository;
+import com.masprog.shopping_list_api.shoppinglist.exception.EmptyShoppingListCompletionException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListNotFoundException;
 import com.masprog.shopping_list_api.shoppinglist.exception.ShoppingListValidationException;
 import com.masprog.shopping_list_api.user.User;
@@ -10,18 +12,22 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 public class ShoppingListService {
 
     private final ShoppingListRepository shoppingListRepository;
     private final UserRepository userRepository;
+    private final ShoppingItemRepository shoppingItemRepository;
 
     public ShoppingListService(
             ShoppingListRepository shoppingListRepository,
-            UserRepository userRepository
+            UserRepository userRepository, ShoppingItemRepository shoppingItemRepository
     ) {
         this.shoppingListRepository = shoppingListRepository;
         this.userRepository = userRepository;
+        this.shoppingItemRepository = shoppingItemRepository;
     }
 
     @Transactional
@@ -112,16 +118,62 @@ public class ShoppingListService {
     }
 
     @Transactional
-    public ShoppingList complete(Long listId, String authenticatedEmail) {
+    public void complete(Long listId, String authenticatedEmail) {
 
-        ShoppingList shoppingList = findById(
-                listId,
-                authenticatedEmail
-        );
+        User user = getAuthenticatedUser(authenticatedEmail);
 
-        throw new ShoppingListValidationException(
-                "Cannot complete an empty shopping list"
-        );
+        ShoppingList shoppingList = shoppingListRepository
+                .findByIdAndUserId(listId, user.getId())
+                .orElseThrow(() ->
+                        new ShoppingListNotFoundException(
+                                "Shopping list not found"
+                        )
+                );
+
+        if (shoppingList.getStatus() != ShoppingListStatus.ACTIVE) {
+            throw new ShoppingListValidationException(
+                    "Only active shopping lists can be completed"
+            );
+        }
+
+        boolean hasItems = shoppingItemRepository
+                .existsByShoppingListId(listId);
+
+        if (!hasItems) {
+            throw new EmptyShoppingListCompletionException(
+                    "Cannot complete an empty shopping list"
+            );
+        }
+
+        shoppingList.setStatus(ShoppingListStatus.COMPLETED);
+        shoppingList.setCompletedAt(LocalDateTime.now());
+    }
+
+    @Transactional
+    public void reopen(Long listId, String authenticatedEmail) {
+
+        // Identificar o utilizador autenticado
+        User user = getAuthenticatedUser(authenticatedEmail);
+
+        // Procurar uma lista pertencente ao utilizador
+        ShoppingList shoppingList = shoppingListRepository
+                .findByIdAndUserId(listId, user.getId())
+                .orElseThrow(() ->
+                        new ShoppingListNotFoundException(
+                                "Shopping list not found"
+                        )
+                );
+
+        // Apenas listas concluídas podem ser reabertas
+        if (shoppingList.getStatus() != ShoppingListStatus.COMPLETED) {
+            throw new ShoppingListValidationException(
+                    "Only completed shopping lists can be reopened"
+            );
+        }
+
+        // Reabrir a lista
+        shoppingList.setStatus(ShoppingListStatus.ACTIVE);
+        shoppingList.setCompletedAt(null);
     }
 
 
