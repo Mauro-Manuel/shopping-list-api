@@ -10,6 +10,7 @@ public record ShoppingListResponse(
         ShoppingListStatus status,
         long totalItems,
         long checkedItems,
+        long pendingItems,
         int progress,
         LocalDateTime createdAt
 ) {

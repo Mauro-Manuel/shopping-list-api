@@ -22,11 +22,10 @@ import com.masprog.shopping_list_api.auth.refresh.RefreshTokenRotationResult;
 import org.springframework.security.core.Authentication;
 import com.masprog.shopping_list_api.auth.dto.LogoutRequest;
 
-import com.masprog.shopping_list_api.user.User;
+
 import com.masprog.shopping_list_api.user.UserRepository;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
+
 
 @RestController
 @RequestMapping("/api/v1/auth")
