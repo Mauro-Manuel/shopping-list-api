@@ -4,6 +4,7 @@ import com.masprog.shopping_list_api.shoppingitem.ShoppingItemRepository;
 import com.masprog.shopping_list_api.shoppinglist.dto.CreateShoppingListRequest;
 import com.masprog.shopping_list_api.shoppinglist.dto.ShoppingListResponse;
 import com.masprog.shopping_list_api.shoppinglist.dto.UpdateShoppingListRequest;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,13 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+@Tag(name = "Shopping Lists", description = "Endpoints for creating and managing shopping lists"
+)
 @RestController
 @RequestMapping("/api/v1/shopping-lists")
 public class ShoppingListController {
@@ -40,7 +48,15 @@ public class ShoppingListController {
         this.shoppingListService = shoppingListService;
         this.shoppingItemRepository = shoppingItemRepository;
     }
-
+    @Operation(
+            summary = "Create a shopping list",
+            description = "Creates a new shopping list for the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Shopping list created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "401", description = "Authentication required")
+    })
     @PostMapping
     public ResponseEntity<ShoppingListResponse> create(
             @Valid @RequestBody CreateShoppingListRequest request,
@@ -59,9 +75,22 @@ public class ShoppingListController {
                 .body(response);
     }
 
+    @Operation(
+            summary = "List shopping lists",
+            description = "Returns paginated shopping lists belonging to the authenticated user, "
+                    + "optionally filtered by status. Each list includes item counts and progress."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shopping lists retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid status or pagination parameters"),
+            @ApiResponse(responseCode = "401", description = "Authentication required")
+    })
     @GetMapping
     public ResponseEntity<PagedModel<ShoppingListResponse>> findAll(
             Authentication authentication,
+            @Parameter(
+                    description = "Optional filter by shopping list status"
+            )
             @RequestParam(required = false) ShoppingListStatus status,
             Pageable pageable
     ) {
@@ -98,6 +127,16 @@ public class ShoppingListController {
         return ResponseEntity.ok(new PagedModel<>(responses));
     }
 
+    @Operation(
+            summary = "Get shopping list details",
+            description = "Returns a shopping list with its items, products, categories, "
+                    + "quantities, units, checked status, item counts and completion progress."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shopping list details retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "404", description = "Shopping list not found")
+    })
     @GetMapping("/{listId}")
     public ResponseEntity<ShoppingListDetailResponse> findById(
             @PathVariable Long listId,
@@ -136,6 +175,16 @@ public class ShoppingListController {
     }
 
 
+    @Operation(
+            summary = "Rename a shopping list",
+            description = "Updates the name of an existing shopping list belonging to the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shopping list renamed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "404", description = "Shopping list not found")
+    })
     @PatchMapping("/{listId}")
     public ResponseEntity<ShoppingListResponse> rename(
             @PathVariable Long listId,
@@ -152,6 +201,15 @@ public class ShoppingListController {
         return ResponseEntity.ok(toResponse(shoppingList));
     }
 
+    @Operation(
+            summary = "Delete a shopping list",
+            description = "Deletes a shopping list belonging to the authenticated user."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Shopping list deleted successfully"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "404", description = "Shopping list not found")
+    })
     @DeleteMapping("/{listId}")
     public ResponseEntity<Void> delete(@PathVariable Long listId, Authentication authentication) {
 
@@ -160,6 +218,16 @@ public class ShoppingListController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(
+            summary = "Complete a shopping list",
+            description = "Marks a shopping list as completed."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shopping list completed successfully"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "404", description = "Shopping list not found"),
+            @ApiResponse(responseCode = "409", description = "Shopping list cannot be completed in its current state")
+    })
     @PatchMapping("/{listId}/complete")
     public ResponseEntity<Void> complete(
             @PathVariable Long listId,
@@ -174,6 +242,16 @@ public class ShoppingListController {
         return ResponseEntity.ok().build();
     }
 
+    @Operation(
+            summary = "Reopen a shopping list",
+            description = "Reopens a completed shopping list."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Shopping list reopened successfully"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "404", description = "Shopping list not found"),
+            @ApiResponse(responseCode = "409", description = "Shopping list cannot be reopened in its current state")
+    })
     @PatchMapping("/{listId}/reopen")
     public ResponseEntity<Void> reopen(
             @PathVariable Long listId,
