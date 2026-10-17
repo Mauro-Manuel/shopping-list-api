@@ -4,6 +4,7 @@ import com.masprog.shopping_list_api.shoppingitem.dto.CreateShoppingItemRequest;
 import com.masprog.shopping_list_api.shoppingitem.dto.ShoppingItemResponse;
 import com.masprog.shopping_list_api.shoppingitem.dto.UpdateShoppingItemRequest;
 import com.masprog.shopping_list_api.shoppingitem.exception.ShoppingItemValidationException;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -11,8 +12,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.math.BigDecimal;
 
+@Tag(name = "Shopping Items",description = "Endpoints for managing items within shopping lists")
 @RestController
 @RequestMapping("/api/v1/shopping-lists/{listId}/items")
 @RequiredArgsConstructor
@@ -20,6 +25,30 @@ public class ShoppingItemController {
 
     private final ShoppingItemService shoppingItemService;
 
+    @Operation(
+            summary = "Add an item to a shopping list",
+            description = "Adds an existing product using productId or creates "
+                    + "a new product using product. Exactly one of these fields "
+                    + "must be provided. Quantity defaults to 1 when omitted."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Shopping item added successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid request data or product selection"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Shopping list or product not found"
+            )
+    })
     @PostMapping
     public ResponseEntity<ShoppingItemResponse> create(
             @PathVariable Long listId,
@@ -69,6 +98,28 @@ public class ShoppingItemController {
     }
 
 
+    @Operation(
+            summary = "Update a shopping item",
+            description = "Updates the quantity and unit of an existing shopping item."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Shopping item updated successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid request data"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Shopping list or item not found"
+            )
+    })
     @PatchMapping("/{itemId}")
     public ResponseEntity<ShoppingItemResponse> update(
             @PathVariable Long listId,
@@ -90,6 +141,24 @@ public class ShoppingItemController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(
+            summary = "Remove an item from a shopping list",
+            description = "Removes an item from the specified shopping list."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "204",
+                    description = "Shopping item removed successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Shopping list or item not found"
+            )
+    })
     @DeleteMapping("/{itemId}")
     public ResponseEntity<Void> delete(
             @PathVariable Long listId,
@@ -106,6 +175,24 @@ public class ShoppingItemController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(
+            summary = "Check a shopping item",
+            description = "Marks an item as purchased in the specified shopping list."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Shopping item checked successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Shopping list or item not found"
+            )
+    })
     @PatchMapping("/{itemId}/check")
     public ResponseEntity<ShoppingItemResponse> check(
             @PathVariable Long listId,
@@ -124,6 +211,24 @@ public class ShoppingItemController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(
+            summary = "Uncheck a shopping item",
+            description = "Marks a previously checked item as pending."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Shopping item unchecked successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Authentication required"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Shopping list or item not found"
+            )
+    })
     @PatchMapping("/{itemId}/uncheck")
     public ResponseEntity<ShoppingItemResponse> uncheck(
             @PathVariable Long listId,
